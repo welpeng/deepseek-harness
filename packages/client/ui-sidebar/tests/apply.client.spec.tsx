@@ -5,6 +5,7 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { SidebarRootInjected } from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import { createTestActivities } from './activity-fixture.client.ts'
 
 async function bench(declare = true) {
   const ctx = new Context()
@@ -12,9 +13,11 @@ async function bench(declare = true) {
   const layout = { toggleSidebar: vi.fn() }
   const workspaces = { startSession: vi.fn() }
   const sessions = { open: vi.fn(), clear: vi.fn() }
+  const activities = createTestActivities()
   ctx.provide('layout', layout)
   ctx.provide('sessions', sessions as never)
   ctx.provide('workspaces', workspaces as never)
+  ctx.provide('activities', activities)
   ctx.provide('locale', new LocaleRuntime(ctx))
   const slots = ctx.get('slots') as SlotRegistry
   if (declare) {
@@ -23,12 +26,12 @@ async function bench(declare = true) {
       () => null,
     )
   }
-  return { ctx, slots, layout, workspaces, sessions }
+  return { ctx, slots, layout, workspaces, sessions, activities }
 }
 
 describe('ui-sidebar apply', () => {
   it('declares only the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'sessions', 'workspaces', 'locale'])
+    expect(inject).toEqual(['slots', 'layout', 'activities', 'sessions', 'workspaces', 'locale'])
   })
 
   it('registers the shell and declares its child seats', async () => {
@@ -36,12 +39,16 @@ describe('ui-sidebar apply', () => {
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     expect(b.slots.entries('sidebar')).toHaveLength(1)
     expect(b.slots.spec('sidebar.workspaces')).toEqual({ kind: 'single', scope: 'root' })
+    expect(b.slots.spec('sidebar.activity')).toEqual({ kind: 'keyed', scope: 'root' })
     expect(b.slots.spec('sidebar.settings')).toEqual({ kind: 'single', scope: 'root' })
     expect(b.slots.spec('sidebar.footer.action')).toEqual({ kind: 'list', scope: 'root' })
     // Copy rides the standard locale seat, not the inject face.
     expect(b.slots.entries('sidebar')[0]!.locale).toBe('sidebar')
-    const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
-    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar'])
+    const injected = (b.slots.entries('sidebar')[0]!.inject as unknown as () => SidebarRootInjected)()
+    expect(injected.hooks.activities).toBe(b.activities)
+    expect(injected.defaultActivityId).toBe('sessions')
+    expect(b.activities.getSnapshot().items.map(item => item.id)).toEqual(['sessions'])
+    injected.selectActivity('sessions')
     // Both arms delegate to the runtime's shared New Session action.
     injected.startSession('workspace' as never)
     expect(b.workspaces.startSession).toHaveBeenCalledWith('workspace')
@@ -63,6 +70,7 @@ describe('ui-sidebar apply', () => {
     await fiber.dispose()
     expect(b.slots.entries('sidebar')).toHaveLength(0)
     expect(b.slots.spec('sidebar.workspaces')).toBeUndefined()
+    expect(b.slots.spec('sidebar.activity')).toBeUndefined()
     expect(b.slots.spec('sidebar.footer.action')).toBeUndefined()
   })
 })

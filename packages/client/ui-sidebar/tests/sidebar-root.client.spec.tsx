@@ -7,6 +7,7 @@ import type {
 } from '../src/client/contract/slots.ts'
 import { SidebarRoot } from '../src/client/SidebarRoot.tsx'
 import { en } from '../src/client/locales.ts'
+import { bindTestActivities, createTestActivities } from './activity-fixture.client.ts'
 
 // English-dictionary translate stub: the shell renders the same copy the
 // assertions below query by accessible name.
@@ -21,9 +22,15 @@ afterEach(() => {
 // props share; stub them as never-called functions.
 const neverHook = (() => { throw new Error('shell must not read global hooks') }) as never
 
-function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; width?: number } = {}) {
+function mountShell(
+  { collapsed = false, width = 300, withIssues = false }:
+  { collapsed?: boolean; width?: number; withIssues?: boolean } = {},
+) {
   const startSession = vi.fn()
   const toggleSidebar = vi.fn()
+  const activities = createTestActivities()
+  activities.register({ id: activities.defaultId, label: () => 'Sessions', shortLabel: () => 'S' })
+  if (withIssues) activities.register({ id: 'issues', label: () => 'Issues', shortLabel: () => 'I' })
   let regionOwner: SidebarSectionOwnerProps | undefined
   let settingsOwner: SidebarSettingsOwnerProps | undefined
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
@@ -33,6 +40,9 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
       collapsed={current.collapsed} width={current.width}
       useSessions={neverHook} useWorkspaces={neverHook}
       startSession={startSession} toggleSidebar={toggleSidebar} t={t}
+      useActivities={bindTestActivities(activities)}
+      defaultActivityId={activities.defaultId}
+      selectActivity={(id) => { activities.select(id) }}
       renderSlot={((
         key: string,
         owner: SidebarFooterActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
@@ -54,6 +64,7 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
   return {
     startSession,
     toggleSidebar,
+    activities,
     regionOwner: () => {
       if (regionOwner === undefined) throw new Error('region owner not rendered')
       return regionOwner
@@ -115,5 +126,14 @@ describe('SidebarRoot shell', () => {
     const b = mountShell({ collapsed: true })
     expect(b.regionOwner().wide).toBe(false)
     expect(screen.getByRole('button', { name: 'Open sidebar' })).toBeTruthy()
+  })
+
+  it('switches keyed Activity regions and hides the New Session capsule outside Sessions', () => {
+    const b = mountShell({ withIssues: true })
+    expect(screen.getByRole('tab', { name: 'Sessions' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: 'Issues' }))
+    expect(b.activities.getSnapshot().activeId).toBe('issues')
+    expect(screen.queryByText('New Session')).toBeNull()
+    expect(screen.getByTestId('region')).toBeTruthy()
   })
 })

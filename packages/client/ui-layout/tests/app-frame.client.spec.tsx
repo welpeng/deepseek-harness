@@ -17,6 +17,7 @@ import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import { SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
+import { ActivityRegistry } from '@deepseek-ai/dsh-client-ui-layout/src/client/activity.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -55,12 +56,16 @@ function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapsho
 function mountFrame() {
   window.innerWidth = frameWidth // first-render viewport source before the observer fires
   const instance = createLayoutStore().create()
-  const slotCalls: { key: string; props: unknown }[] = []
-  const renderSlot = ((key: string, owner: object) => {
-    slotCalls.push({ key, props: owner })
+  const activities = new ActivityRegistry()
+  activities.register({ id: 'sessions', label: () => 'Sessions' })
+  activities.register({ id: 'issues', label: () => 'Issues' })
+  const slotCalls: { key: string; props: unknown; opts?: unknown }[] = []
+  const renderSlot = ((key: string, owner: object, opts?: unknown) => {
+    slotCalls.push({ key, props: owner, ...(opts !== undefined ? { opts } : {}) })
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'activity.main') return <div data-testid="activity-content" />
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
   }) as AppFrameProps['renderSlot']
@@ -88,11 +93,13 @@ function mountFrame() {
       useSessions={useSessions}
       useWorkspaces={((sel: (s: WorkspaceListState) => unknown) => sel(workspaceState)) as never}
       SessionProvider={SessionProviderStub}
+      useActivities={hookOf(activities)}
+      defaultActivityId={activities.defaultId}
     />
   )
   const utils = render(element())
   const frame = utils.container.firstElementChild as HTMLElement
-  return { instance, frame, slotCalls, rerenderFrame: () => { utils.rerender(element()) }, ...utils }
+  return { instance, activities, frame, slotCalls, rerenderFrame: () => { utils.rerender(element()) }, ...utils }
 }
 
 function tracks(frame: HTMLElement): number[] {
@@ -249,6 +256,18 @@ describe('AppFrame', () => {
     expect(tracks(frame)).toEqual([280, 0])
     expect(getByTestId('details-content')).toBeTruthy()
     expect(frame.hasAttribute('data-details-collapsed')).toBe(true)
+  })
+
+  it('dispatches a selected Activity while keeping the conversation resident and hiding details', () => {
+    const { activities, frame, getByTestId, slotCalls } = mountFrame()
+    act(() => { activities.select('issues') })
+    expect(getByTestId('activity-content')).toBeTruthy()
+    expect(getByTestId('center-content').parentElement?.hasAttribute('hidden')).toBe(true)
+    expect(tracks(frame)).toEqual([280, 0])
+    const call = slotCalls.filter(item => item.key === 'activity.main').at(-1)
+    expect(call?.opts).toEqual({ entryKey: 'issues' })
+    act(() => { activities.select('sessions') })
+    expect(getByTestId('center-content').parentElement?.hasAttribute('hidden')).toBe(false)
   })
 
   it('closed sidebar keeps its compact rail with mounted slot content and collapsed owner props', () => {

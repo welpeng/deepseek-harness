@@ -1,10 +1,10 @@
 /**
  * Layout plugin, browser half: one register() call contributes AppFrame into
  * the runtime's built-in 'root' slot and, in the same breath, declares the
- * four child slots (declaration = exclusive render authority), seats the
- * layout store (panel geometry), and wires the panel-action service face.
- * ctx.layout is the cross-plugin panel-action contract; navigation state lives
- * with the runtime sessions service. A second effect seats the theme
+ * five child slots (declaration = exclusive render authority), seats the
+ * layout store (panel geometry), and wires the panel-action and Activity
+ * service faces. ctx.layout is the cross-plugin panel-action contract;
+ * ctx.activities owns global surface discovery and selection. A second effect seats the theme
  * presenter, which projects ctx.theme snapshots onto document.body.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -14,6 +14,7 @@ import { AppFrame } from './AppFrame.tsx'
 import { createLayoutStore } from './stores.ts'
 import { LayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
+import { ActivityRegistry } from './activity.ts'
 
 // Contract exports only (export-convergence rule: cross-package consumers
 // keep a symbol exported; test-only/package-internal symbols live off /src).
@@ -22,18 +23,24 @@ import { ThemePresenter } from './theme-presenter.ts'
 // against; the frame components and the store factory are package-internal.
 export { LayoutController } from './service.ts'
 export type { ILayout } from './service.ts'
+export type {
+  ActivityDescriptor, ActivitySnapshot, ActivityViewHooks, ActivityViewInjected,
+  IActivityRegistry,
+} from './activity.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** The outward face only; the concrete service stays inside this plugin. */
     layout: import('./service.ts').ILayout
+    /** Global Activity discovery and selection; UI contributions remain slot-owned. */
+    activities: import('./activity.ts').IActivityRegistry
   }
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     // The 'root' entry itself is the runtime's built-in slot (declared
-    // there); these four are the frame's children, declared by the same
+    // there); these five are the frame's children, declared by the same
     // register() call that contributes AppFrame. Session owners never pass
     // sessionId: the framework injects it as a standard prop.
     /**
@@ -71,6 +78,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
     /**
+     * A top-level non-Session application surface. Each Activity registers one
+     * entry under its stable Activity id; AppFrame dispatches only the selected
+     * id and keeps the resident conversation tree mounted behind it.
+     */
+    'activity.main': { kind: 'keyed'; scope: 'root'; owner: ActivityMainOwnerProps }
+    /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
      * toast stack or a status pill all belong here, and entries order among
@@ -104,25 +117,31 @@ export interface ConvOwnerProps {}
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
 
+/** Activity-main owner share: navigation metadata stays in ctx.activities. */
+export interface ActivityMainOwnerProps {}
+
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
 
 /**
  * Client plugin body: provide ctx.layout, then one register() call — AppFrame
- * into 'root' with the four child-slot declarations, the layout store seat,
+ * into 'root' with the five child-slot declarations, the layout store seat,
  * and the inject hook that hands the store's bound actions to the service.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   const layout = new LayoutController()
+  const activities = new ActivityRegistry()
   ctx.effect(() => {
     const disposeService = ctx.reflect.provide('layout', layout)
+    const disposeActivities = ctx.reflect.provide('activities', activities)
     const disposeRegistration = ctx.slots.register({
       name: 'root',
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
+        'activity.main': { kind: 'keyed', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per
@@ -132,13 +151,17 @@ export function apply(ctx: ClientContext): void {
       // conversation business actions belong to their registrants.
       inject: (actions: PanelActions) => {
         layout.attachPanels(actions)
-        return {}
+        return {
+          hooks: { activities },
+          defaultActivityId: activities.defaultId,
+        }
       },
     }, AppFrame)
     return () => {
       disposeRegistration()
       // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.
       void disposeService()
+      void disposeActivities()
     }
   }, 'ui-layout: service + root registration')
 

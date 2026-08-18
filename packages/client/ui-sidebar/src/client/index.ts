@@ -23,15 +23,25 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'sidebar'
 
 /** Services required by the sidebar plugin. */
-export const inject = ['slots', 'layout', 'sessions', 'workspaces', 'locale']
+export const inject = ['slots', 'layout', 'activities', 'sessions', 'workspaces', 'locale']
 
 /** Registers the sidebar shell and its service callbacks.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar: dictionaries')
+  const t = ctx.locale.bind(NS)
+  ctx.effect(() => ctx.activities.register({
+    id: ctx.activities.defaultId,
+    order: 0,
+    label: () => t('activity.sessions'),
+    shortLabel: () => t('activity.sessions.short'),
+  }), 'ui-sidebar: Session Activity')
 
   const injectProps = (): SidebarRootInjected => ({
+    hooks: { activities: ctx.activities },
+    defaultActivityId: ctx.activities.defaultId,
+    selectActivity: (id) => { ctx.activities.select(id) },
     // The shell's New Session button rides the runtime's shared action
     // (current Session Workspace, then recent Workspace).
     startSession: (workspaceId) => { ctx.workspaces.startSession(workspaceId) },
@@ -46,6 +56,7 @@ export function apply(ctx: ClientContext): void {
       // registers the foot trigger + settings panel.
       children: {
         'sidebar.workspaces': { kind: 'single', scope: 'root' },
+        'sidebar.activity': { kind: 'keyed', scope: 'root' },
         'sidebar.settings': { kind: 'single', scope: 'root' },
         'sidebar.footer.action': { kind: 'list', scope: 'root' },
       },

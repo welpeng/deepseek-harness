@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import type { SidebarRootComponentProps, SidebarSectionOwnerProps } from '../src/client/contract/slots.ts'
 import { SidebarRoot } from '../src/client/SidebarRoot.tsx'
 import { en } from '../src/client/locales.ts'
+import { bindTestActivities, createTestActivities } from './activity-fixture.client.ts'
 
 /** Pinned column box; the shell compares pointer coordinates against it. */
 const COLUMN_WIDTH = 280
@@ -29,11 +30,16 @@ afterEach(() => {
  * @returns the column element and whether it currently carries the quiet state.
  */
 function mountColumn(): { column: HTMLElement; quiet: () => boolean } {
+  const activities = createTestActivities()
+  activities.register({ id: activities.defaultId, label: () => 'Sessions' })
   const view = render(
     <SidebarRoot
       collapsed={false} width={300}
       useSessions={neverHook} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
+      useActivities={bindTestActivities(activities)}
+      defaultActivityId={activities.defaultId}
+      selectActivity={(id) => { activities.select(id) }}
       renderSlot={((_key: string, owner: SidebarSectionOwnerProps) =>
         <div data-testid="region" data-wide={owner.wide} />) as SidebarRootComponentProps['renderSlot']}
     />,

@@ -58,12 +58,13 @@
   from { opacity: 0; }
 }
 
-/* At the 150ms rail settle, the four upper controls enter from the former
+/* At the 150ms rail settle, the live upper controls enter from the former
    rail right edge over the remaining 150ms of the AppFrame track transition.
    The bottom-pinned settings seat shares their opacity timeline but stays
    horizontally fixed. Only a live collapse gets .railIn; a cold collapsed
    render stays static. */
 .railIn .iconButton,
+.railIn .activityTabs,
 .railIn .newSession,
 .railIn .regionArea {
   animation: rail-in 150ms var(--ds-ease-in-out) backwards;
@@ -217,6 +218,69 @@
   white-space: nowrap;
 }
 
+/* Activity navigation appears only when a second top-level surface is
+   registered, preserving the shipped one-Activity shell byte-for-byte. */
+.activityTabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  margin: 0 2px 8px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.activityTab {
+  min-width: 0;
+  flex: 1;
+  height: 30px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  line-height: 30px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.activityTab:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.activityTabActive {
+  background: var(--dsw-alias-button-elevated-fill);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+.collapsed .activityTabs {
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  background: transparent;
+}
+
+.collapsed .activityTab {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  font-weight: 600;
+  line-height: 36px;
+}
+
+.collapsed .activityTabActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+  box-shadow: none;
+}
+
 .collapsed .newSessionLabel {
   max-width: 0;
 }
@@ -275,6 +339,7 @@
   .wide,
   .fading > *,
   .railIn .iconButton,
+  .railIn .activityTabs,
   .railIn .newSession,
   .railIn .footArea,
   .railIn .regionArea {

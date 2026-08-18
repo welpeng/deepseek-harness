@@ -11,6 +11,9 @@ import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/d
 // Type-only: pulls ui-layout's SlotMap merge (the 'sidebar' entry) into every
 // program that sees this contract, so PropsRuntime<'sidebar'> resolves.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {
+  ActivityViewHooks, ActivityViewInjected,
+} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -22,6 +25,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * registers the browser.
      */
     'sidebar.workspaces': { kind: 'single'; scope: 'root'; owner: SidebarSectionOwnerProps }
+    /**
+     * Activity-specific browsing and primary-action region. The sidebar shell
+     * dispatches the selected non-Session Activity id into this keyed seat;
+     * each Activity owns its own rows, filters, and creation affordance.
+     */
+    'sidebar.activity': { kind: 'keyed'; scope: 'root'; owner: SidebarSectionOwnerProps }
     /**
      * The settings seat at the sidebar foot. Declared by this package's
      * 'sidebar' entry; ui-settings registers its trigger row + modal panel.
@@ -67,7 +76,7 @@ export interface SidebarFooterActionOwnerProps {
  * factory). The shell keeps only its own controls: starting a Session from
  * the New Session button and toggling the column.
  */
-export type SidebarRootInjected = {
+export type SidebarRootInjected = ActivityViewInjected & {
   /**
    * Start a New Session: with a workspace, reuse-or-create its blank session
    * and open it; without one, inherit the current Session Workspace, then the
@@ -76,6 +85,8 @@ export type SidebarRootInjected = {
   startSession: (workspaceId?: WorkspaceId) => void
   /** Toggle the sidebar column through the layout service. */
   toggleSidebar: () => void
+  /** Select one registered top-level Activity. */
+  selectActivity: (id: string) => void
 }
 
 /**
@@ -85,5 +96,7 @@ export type SidebarRootInjected = {
  */
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
-  & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
-  & SidebarRootInjected & PropsLocale<'sidebar'>
+  & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.activity' | 'sidebar.settings' | 'sidebar.footer.action'>
+  & Omit<SidebarRootInjected, 'hooks'>
+  & ActivityViewHooks
+  & PropsLocale<'sidebar'>

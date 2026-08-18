@@ -4,7 +4,8 @@
  * while the sliding column (AppFrame grid tracks) clips it — nothing reflows
  * mid-slide. At settle the wide-only content unmounts and the four upper
  * controls enter the 56px rail from the same horizontal offset (one icon each,
- * same top-down order) on one fade that ends with the slide. The bottom-pinned
+ * same top-down order) on one fade that ends with the slide. Optional Activity
+ * navigation follows that transition. The bottom-pinned
  * settings control only fades. The workspace/session browsing region between
  * the New Session button and the foot is the `sidebar.workspaces` registrant's,
  * and the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
@@ -46,6 +47,9 @@ export function SidebarRoot({
   width,
   startSession,
   toggleSidebar,
+  useActivities,
+  defaultActivityId,
+  selectActivity,
   t,
   renderSlot,
 }: SidebarRootComponentProps) {
@@ -58,6 +62,8 @@ export function SidebarRoot({
     return () => { window.clearTimeout(timer) }
   }, [collapsed])
   const wide = !collapsed || !settled
+  const activitySnapshot = useActivities(snapshot => snapshot)
+  const sessionActivity = activitySnapshot.activeId === defaultActivityId
 
   // Freeze the content at its expanded width while it fades out (collapsed
   // && wide): the sliding column then clips it instead of reflowing it. The
@@ -156,26 +162,57 @@ export function SidebarRoot({
         </Tooltip>
       </div>
 
+      {activitySnapshot.items.length > 1 && (
+        <div className={css.activityTabs} role="tablist" aria-label={t('activity.switch')}>
+          {activitySnapshot.items.map((activity) => {
+            const label = activity.label()
+            const compact = activity.shortLabel?.() ?? Array.from(label)[0] ?? '•'
+            const selected = activity.id === activitySnapshot.activeId
+            return (
+              <Tooltip key={activity.id} label={label} delayMs={500} disabled={wide}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-label={label}
+                  className={clsx(css.activityTab, selected && css.activityTabActive)}
+                  onClick={() => { selectActivity(activity.id) }}
+                >
+                  <span aria-hidden="true">{wide ? label : compact}</span>
+                </button>
+              </Tooltip>
+            )
+          })}
+        </div>
+      )}
+
       {/* Expanded, the button carries its own label — tooltip only on the rail. */}
-      <Tooltip label={t('session.new.label')} delayMs={500} disabled={wide}>
-        <button
-          type="button"
-          className={css.newSession}
-          aria-label={t('session.new.label')}
-          onClick={() => { startSession() }}
-        >
-          <IconNewChatOutline16 size={wide ? 14 : 18} />
-          {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
-        </button>
-      </Tooltip>
+      {sessionActivity && (
+        <Tooltip label={t('session.new.label')} delayMs={500} disabled={wide}>
+          <button
+            type="button"
+            className={css.newSession}
+            aria-label={t('session.new.label')}
+            onClick={() => { startSession() }}
+          >
+            <IconNewChatOutline16 size={wide ? 14 : 18} />
+            {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
+          </button>
+        </Tooltip>
+      )}
 
       {/* The browsing region fills the column between the controls and the
           foot in both states; its rail icon column rides the same slot. */}
       <div className={css.regionArea}>
-        {renderSlot('sidebar.workspaces', {
-          wide,
-          expandSidebar: () => { if (collapsed) toggleSidebar() },
-        })}
+        {sessionActivity
+          ? renderSlot('sidebar.workspaces', {
+            wide,
+            expandSidebar: () => { if (collapsed) toggleSidebar() },
+          })
+          : renderSlot('sidebar.activity', {
+            wide,
+            expandSidebar: () => { if (collapsed) toggleSidebar() },
+          }, { entryKey: activitySnapshot.activeId })}
       </div>
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
